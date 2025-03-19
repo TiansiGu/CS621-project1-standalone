@@ -7,7 +7,7 @@
   "udp_src_port": 9876,
   "udp_dst_port": 8765,
   "l": 1000,
-  "n": 6000,
+  "n": 10,
   "gamma": 15,
   "tau": 100,
   "ttl": 255
