@@ -17,6 +17,9 @@
 #define RECV_BUFF_SIZE 4096
 #define CUTOFF_TIME 60
 
+struct timespec t_first_SYN_sent = {0};
+pthread_mutex_t lock;
+
 struct tcp_pseudo_header {
     u_int32_t src_address;
     u_int32_t dst_address;
@@ -195,6 +198,8 @@ void *send_detect_packets(void *arg) {
 		close(sock_syn);
 		close(sock_udp);
 	}
+	clock_gettime(CLOCK_MONOTONIC, &t_first_SYN_sent); //Start timer as soon as the first SYN is sent
+
 	// Send UDP trains
 	result = send_UDP_train(sock_udp, configs, &server_sin, 0);
 	if (result == -1) {
@@ -254,6 +259,44 @@ void set_nonblocking(int fd) {
     }
 }
 
+/** Parse packet received from raw socket and identify if this packet is a RST packe.
+If it is not a related RST packet, return -1. If it is a RST packet sent from head SYN 
+port, return 0; If it is a RST packet sent from tail SYN port, return 1. */
+int parse_recv_packet(unsigned char *buf, struct configurations *configs) {
+	struct ip *iph = (struct ip *) buf;
+	if (iph->ip_v != 4) {
+		printf("ip version unmatch: %d\n", iph->ip_v);
+		return -1; //only keep ipv4 
+	}
+	if (iph->ip_src.s_addr != inet_addr(configs->server_ip_addr)) {
+		printf("ip addr unmatch\n");
+		return -1;
+	} //not from the detecting server we sent SYN to
+
+	struct tcphdr *tcph = (struct tcphdr *) (buf + iph->ip_hl * 4); 
+	if (tcph->th_flags & TH_RST == 0) {
+		printf("RST bit not set \n");
+		return -1;
+	} //RST bit not set packet
+	
+	uint16_t src_port = ntohs(tcph->th_sport);
+	if (src_port == configs->server_port_head_SYN) {
+		return 0;
+	} else if (src_port == configs->server_port_tail_SYN) {
+		return 1;
+	} else {
+		printf("th sport unmatch: %u \n", src_port);
+		return -1;
+	}
+}
+
+int is_first_SYN_sent() {
+	pthread_mutex_lock(&lock); //lock before read
+	int res = !(t_first_SYN_sent.tv_sec == 0 && t_first_SYN_sent.tv_nsec == 0);
+	pthread_mutex_unlock(&lock); //unlock after read
+	return res;
+}
+
 void *receive_RST_packets(void *arg) {
 	struct configurations *configs = (struct configurations *) arg;
 
@@ -263,30 +306,22 @@ void *receive_RST_packets(void *arg) {
 	    exit(EXIT_FAILURE);
 	}
 
-	// Assign address to socket
-	struct sockaddr_in sender_sin;
-	memset(&sender_sin, 0, sizeof(sender_sin));
-	sender_sin.sin_family = AF_INET;
-	sender_sin.sin_addr.s_addr = inet_addr(configs->server_ip_addr);
-
 	// Set non-blocking
 	set_nonblocking(sock);
 
 	unsigned char buf[RECV_BUFF_SIZE];
 
-	int k = 0;
 	int count;
 	struct timespec t_l1, t_ln, t_h1, t_hn, t_curr;
-	socklen_t sin_len = sizeof(sender_sin);
+	int head_c = 0, tail_c = 0;
 	while (1) {
 		// sender addr is sent in to filter the received packets
-        count = recvfrom(sock, buf, RECV_BUFF_SIZE, 0, 
-			(struct sockaddr *) &sender_sin, &sin_len);
+        count = recvfrom(sock, buf, RECV_BUFF_SIZE, 0, NULL, NULL);
         if (count == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				clock_gettime(CLOCK_MONOTONIC, &t_curr);
-				if (k > 0 && t_curr.tv_sec - t_l1.tv_sec > CUTOFF_TIME) {
-					printf("Time out, terminated here. k = %d\n", k);
+				if (is_first_SYN_sent() && t_curr.tv_sec - t_first_SYN_sent.tv_sec > CUTOFF_TIME) {
+					printf("Failed to detect due to insufficient information.\n");
 					break;
 				} else {
 					continue; // No data available (non-blocking)
@@ -298,17 +333,35 @@ void *receive_RST_packets(void *arg) {
 			}  
         }
 
-		k++;
-		if (k == 1) clock_gettime(CLOCK_MONOTONIC, &t_l1);
+		// parse received buffer and filtered out packets 
+		int result = parse_recv_packet(buf, configs);
+		printf("get a packet, result %d\n", result);
+		if (result == 0) {
+			if (head_c == 0) clock_gettime(CLOCK_MONOTONIC, &t_l1);
+			else clock_gettime(CLOCK_MONOTONIC, &t_ln);
+			head_c++;
+		} else if (result == 1) {
+			if (tail_c == 0) clock_gettime(CLOCK_MONOTONIC, &t_h1);
+			else clock_gettime(CLOCK_MONOTONIC, &t_hn);
+			tail_c++;
+		} else {
+			continue;
+		}
 
-		// parse received buffer
-		// differentiate RST for head and tail by port number, and the 2rd train's RSTs are after the 1st
-		// ToDo!
-		
-
-		if (k == 4) {
+		if (head_c == 2 && tail_c == 2) {
 			printf("Received RST packets done \n");
 			break;
+		}
+	}
+
+	if (head_c == 2 && tail_c == 2) {
+		long t_l = (t_ln.tv_sec - t_l1.tv_sec) * 1000L + (t_ln.tv_nsec - t_l1.tv_nsec) / 1000000L;
+		long t_h = (t_hn.tv_sec - t_h1.tv_sec) * 1000L + (t_hn.tv_nsec - t_h1.tv_nsec) / 1000000L;
+		printf("Time difference %ld\n", t_h - t_l);
+		if (t_h - t_l > configs->tau) {
+			printf("Compression detected!\n");
+		} else {
+			printf("No compression was detected.\n");
 		}
 	}
 
