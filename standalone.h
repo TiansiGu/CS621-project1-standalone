@@ -3,6 +3,8 @@
 
 struct configurations {
 	char server_ip_addr[ADDR_LEN];
+	char client_ip_addr[ADDR_LEN];
+	uint16_t client_port_SYN;
 	uint16_t server_port_head_SYN;
     uint16_t server_port_tail_SYN;
 	uint16_t udp_src_port;

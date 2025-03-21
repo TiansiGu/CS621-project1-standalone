@@ -35,6 +35,16 @@ void parse_configs(char* file_name, char *buffer, struct configurations *configs
 	if (cJSON_IsString(name) && (name->valuestring != NULL)) { 
 	    strcpy(configs->server_ip_addr, name->valuestring);
 	}
+
+	name = cJSON_GetObjectItemCaseSensitive(json,"client_ip_addr"); 
+	if (cJSON_IsString(name)) { 
+		strcpy(configs->client_ip_addr, name->valuestring);
+	}
+
+	name = cJSON_GetObjectItemCaseSensitive(json, "client_port_SYN");
+	if (cJSON_IsNumber(name)) { 
+		configs->client_port_SYN = name->valueint;
+	}
 	
 	name = cJSON_GetObjectItemCaseSensitive(json,"server_port_head_SYN"); 
 	if (cJSON_IsNumber(name)) { 

@@ -52,7 +52,7 @@ int populate_ip_header(struct ip *iphr, struct configurations *configs, int prot
 
     // unsigned long src_addr;
     // if (get_host_addr(&src_addr) == -1) return -1; /* get host real ip addr*/
-	iphr->ip_src.s_addr = inet_addr("192.168.128.4"); /* addr in hostent struct are already in network byte order */
+	iphr->ip_src.s_addr = inet_addr(configs->client_ip_addr); /* addr in hostent struct are already in network byte order */
 	iphr->ip_dst.s_addr = inet_addr(configs->server_ip_addr); /* inet_addr returns value in network byte order */
 	
 	// Calculate and set the IP header checksum
@@ -61,8 +61,8 @@ int populate_ip_header(struct ip *iphr, struct configurations *configs, int prot
 	return 0;
 }
 
-void populate_tcp_header(struct tcphdr *tcphr, struct ip *iphr, uint16_t dst_port) {
-	tcphr->th_sport = htons(1234); /* arbitrary port */
+void populate_tcp_header(struct tcphdr *tcphr, struct ip *iphr, uint16_t src_port, uint16_t dst_port) {
+	tcphr->th_sport = htons(src_port);
   	tcphr->th_dport = htons(dst_port);
 	tcphr->th_seq = random(); /* start from random sequence number */
 	tcphr->th_ack = 0; /* the ack sequence is 0 in the 1st packet */
@@ -96,7 +96,7 @@ int send_SYN(int sock_syn, struct configurations *configs, uint16_t server_port)
 	}
 
 	struct tcphdr tcphr;
-	populate_tcp_header(&tcphr, &iphr, server_port);
+	populate_tcp_header(&tcphr, &iphr, configs->client_port_SYN, server_port);
 	
 	//tcphr.th_sum = tcp_checksum(&tcphr, &iphr, 0); // set checksum in tcp header
 

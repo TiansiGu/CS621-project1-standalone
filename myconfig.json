@@ -1,5 +1,7 @@
 {
   "server_ip_addr": "192.168.128.5",
+  "client_ip_addr": "192.168.128.4",
+  "client_port_SYN": 1234,
   "server_port_preprobing": 7777,
   "server_port_postprobing": 6666,
   "server_port_head_SYN": 9999,
