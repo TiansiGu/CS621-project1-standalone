@@ -18,7 +18,9 @@
 #define CUTOFF_TIME 60
 
 struct timespec t_first_SYN_sent = {0};
-pthread_mutex_t lock;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int is_server_ready = 0;
 
 struct tcp_pseudo_header {
     u_int32_t src_address;
@@ -172,7 +174,7 @@ int send_UDP_train(int sock_udp, struct configurations *configs,
 	return 0;
 }
 
-void *send_detect_packets(void *arg) {
+void send_detect_packets(void *arg) {
 	struct configurations *configs = (struct configurations *) arg;
 
 	int sock_syn = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
@@ -254,6 +256,17 @@ void *send_detect_packets(void *arg) {
 	close(sock_syn);
 	close(sock_udp);
 	printf("Sender thread done \n");
+}
+
+void *start_send(void *arg) {
+	pthread_mutex_lock(&lock);
+	while (!is_server_ready) {
+		pthread_cond_wait(&cond, &lock);
+	}
+	pthread_mutex_unlock(&lock);
+	
+	printf("receiver ready, start sending detect packets now... \n");
+	send_detect_packets(arg);
 	return NULL;
 }
 
@@ -310,7 +323,15 @@ int is_first_SYN_sent() {
 	return res;
 }
 
-void *receive_RST_packets(void *arg) {
+void wakeup_sender() {
+	pthread_mutex_lock(&lock);
+	is_server_ready = 1; 
+	pthread_cond_signal(&cond);
+	pthread_mutex_unlock(&lock);
+}
+
+void *start_recv(void *arg) {
+	//sleep(5); //to be deleted
 	struct configurations *configs = (struct configurations *) arg;
 
 	int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
@@ -327,12 +348,17 @@ void *receive_RST_packets(void *arg) {
 	int count;
 	struct timespec t_l1, t_ln, t_h1, t_hn, t_curr;
 	int head_c = 0, tail_c = 0;
+	int flag = 0; //represent if sender has been started
 	while (1) {
 		// sender addr is sent in to filter the received packets
         count = recvfrom(sock, buf, RECV_BUFF_SIZE, 0, NULL, NULL);
         if (count == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				clock_gettime(CLOCK_MONOTONIC, &t_curr);
+				if (!flag) {
+					flag = 1;
+					wakeup_sender();
+				}
 				if (is_first_SYN_sent() && t_curr.tv_sec - t_first_SYN_sent.tv_sec > CUTOFF_TIME) {
 					printf("Failed to detect due to insufficient information.\n");
 					break;
@@ -388,14 +414,14 @@ void probe(struct configurations *configs) {
 
 	pthread_t sender_thr, listener_thr;
 	// create sender thread
-	int sender_thr_result = pthread_create(&sender_thr, NULL, send_detect_packets, configs);
+	int sender_thr_result = pthread_create(&sender_thr, NULL, start_send, configs);
 	if (sender_thr_result != 0) {
 		perror("Error occurred when creating sender thread");
 		exit(EXIT_FAILURE);
 	}
 
 	// create listener thread
-	int listener_thr_result = pthread_create(&listener_thr, NULL, receive_RST_packets, configs);
+	int listener_thr_result = pthread_create(&listener_thr, NULL, start_recv, configs);
 	if (listener_thr_result != 0) {
 		perror("Error occurred when creating listener thread");
 		exit(EXIT_FAILURE);
