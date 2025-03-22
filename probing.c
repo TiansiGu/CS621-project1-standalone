@@ -142,6 +142,16 @@ void bind_port(int fd, int port, struct sockaddr_in *addr) {
 	}
 }
 
+
+void set_ttl(int fd, int ttl) {
+	int result = setsockopt(fd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
+	if (result == -1) {
+		perror("Failed to set ttl");
+		close(fd);
+		exit(EXIT_FAILURE);
+	}
+}
+
 int send_UDP_train(int sock_udp, struct configurations *configs, 
 	struct sockaddr_in *server_sin, int high) {
 	// Generate udp payload
@@ -190,6 +200,8 @@ void *send_detect_packets(void *arg) {
 
 	// Specify the port client uses to connect to server
 	bind_port(sock_udp, configs->udp_src_port, &client_sin);
+	// Set ttl from configs
+	set_ttl(sock_udp, configs->ttl);
 
 	// Send head SYN
 	int result = send_SYN(sock_syn, configs, configs->server_port_head_SYN);
@@ -258,6 +270,7 @@ void set_nonblocking(int fd) {
         exit(EXIT_FAILURE);
     }
 }
+
 
 /** Parse packet received from raw socket and identify if this packet is a RST packe.
 If it is not a related RST packet, return -1. If it is a RST packet sent from head SYN 
