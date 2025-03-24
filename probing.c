@@ -46,7 +46,7 @@ int populate_ip_header(struct ip *iphr, struct configurations *configs, int prot
 	iphr->ip_hl = 5; //set ip header size to be the minimum: 5*4 = 20 bytes
 	iphr->ip_tos = 0; //type of service
 	iphr->ip_len = iphr->ip_hl * 4 + data_size; //no payload
-	iphr->ip_id = htonl(54321); //all datagrams between src and dst of a given protocol must have unique IPv4 ID over a period of MDL
+	iphr->ip_id = htons(54321); //all datagrams between src and dst of a given protocol must have unique IPv4 ID over a period of MDL
 	iphr->ip_off = htons(IP_DF);  //set don't fragment bit
 	iphr->ip_ttl = configs->ttl; //TTL is a single byte, no need to convert endian
 	iphr->ip_p = protocol; //tcp is 6, udp is 17
@@ -212,7 +212,9 @@ void send_detect_packets(void *arg) {
 		close(sock_syn);
 		close(sock_udp);
 	}
+	pthread_mutex_lock(&lock); 
 	clock_gettime(CLOCK_MONOTONIC, &t_first_SYN_sent); //Start timer as soon as the first SYN is sent
+	pthread_mutex_unlock(&lock);
 
 	// Send UDP trains
 	result = send_UDP_train(sock_udp, configs, &server_sin, 0);
@@ -404,6 +406,7 @@ void *start_recv(void *arg) {
 		}
 	}
 
+	close(sock);
 	printf("Receiver thread done \n");
 	return NULL;
 }
