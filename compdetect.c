@@ -97,7 +97,7 @@ void parse_configs(char* file_name, char *buffer, struct configurations *configs
 
 int main(int argc, char* argv[]) {
     if (argc <= 1) {
-		printf("Missing configurations.Exited early before detection. \n");
+		printf("Missing configurations. Exited early before detection. \n");
 		exit(EXIT_FAILURE);
 	}
     
