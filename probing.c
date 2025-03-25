@@ -234,6 +234,7 @@ void send_detect_packets(void *arg) {
 		close(sock_udp);
 	}
 
+	// Wait for inter-measurement time
 	sleep(configs->gamma);
 
 	// Send head SYN
@@ -298,6 +299,7 @@ int parse_recv_packet(unsigned char *buf, struct configurations *configs) {
 	}
 	if (iph->ip_src.s_addr != inet_addr(configs->server_ip_addr)) {
 		printf("ip addr unmatch\n");
+		printf("Source IP is: %s\n", inet_ntoa(iph->ip_src));
 		return -1;
 	} //not from the detecting server we sent SYN to
 
