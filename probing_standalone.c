@@ -211,6 +211,16 @@ void set_ttl(int fd, int ttl) {
 	}
 }
 
+/** Set don't fragment bit for sock fd */
+void set_df(int fd) {
+	int val = IP_PMTUDISC_DO;
+	if (setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val)) == -1) {
+		perror("Failed to set don't fragment");
+		close(fd);
+		exit(EXIT_FAILURE);
+	}
+}
+
 /**
  * This function generates a payload for UDP packets and sends a series of packets 
  * (packet train) to the specified server using the given socket descriptor. The 
@@ -285,6 +295,8 @@ void send_detect_packets(void *arg) {
 	bind_port(sock_udp, configs->udp_src_port, &client_sin);
 	// Set ttl from configs
 	set_ttl(sock_udp, configs->ttl);
+	// Set DF bit
+	set_df(sock_udp);
 
 	// Send head SYN
 	int result = send_SYN(sock_syn, configs, configs->server_port_head_SYN);
@@ -398,7 +410,6 @@ int parse_recv_packet(unsigned char *buf, struct configurations *configs) {
 	}
 	if (iph->ip_src.s_addr != inet_addr(configs->server_ip_addr)) {
 		printf("ip addr unmatch\n");
-		printf("Source IP is: %s\n", inet_ntoa(iph->ip_src));
 		return -1;
 	} //not from the detecting server we sent SYN to
 

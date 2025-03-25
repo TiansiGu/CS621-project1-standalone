@@ -2,7 +2,7 @@ OBJS = compdetect.o probing_standalone.o payload_generator.o
 PROGS = compdetect
 LDFLAGS = -lcjson
 
-HDRS = standalone.h payload_generator.h
+HDRS = standalone.h payload_generator.h default.h
 %.o: %.c $(HDRS)
 	gcc -c -g -o $@ $< 
 
