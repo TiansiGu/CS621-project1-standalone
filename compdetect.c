@@ -4,6 +4,7 @@
 #include <cjson/cJSON.h>
 
 #include "standalone.h" 
+#include "default.h"
 
 #define BUFFER_SIZE 1024
 
@@ -54,51 +55,71 @@ void parse_configs(char* file_name, char *buffer, struct configurations *configs
 	name = cJSON_GetObjectItemCaseSensitive(json, "client_port_SYN");
 	if (cJSON_IsNumber(name)) { 
 		configs->client_port_SYN = name->valueint;
+	} else {
+		configs->client_port_SYN = DEFAULT_CLIENT_PORT_SYN;
 	}
 	
 	name = cJSON_GetObjectItemCaseSensitive(json,"server_port_head_SYN"); 
 	if (cJSON_IsNumber(name)) { 
 		configs->server_port_head_SYN = name->valueint;
+	} else {
+		configs->server_port_head_SYN = DEFAULT_SERVER_PORT_HEAD_SYN;
 	}
 
     name = cJSON_GetObjectItemCaseSensitive(json,"server_port_tail_SYN"); 
 	if (cJSON_IsNumber(name)) { 
 		configs->server_port_tail_SYN = name->valueint;
+	} else {
+		configs->server_port_tail_SYN = DEFAULT_SERVER_PORT_TAIL_SYN;
 	}
 	
 	name = cJSON_GetObjectItemCaseSensitive(json,"udp_src_port"); 
 	if (cJSON_IsNumber(name)) { 
 		configs->udp_src_port = name->valueint;
+	} else {
+		configs->udp_src_port = DEFAULT_UDP_SRC_PORT;
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"udp_dst_port"); 
 	if (cJSON_IsNumber(name)) { 
 		configs->udp_dst_port = name->valueint;
+	} else {
+		configs->udp_dst_port = DEFAULT_UDP_DST_PORT;
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"l");
 	if (cJSON_IsNumber(name)) {
 		configs->l = name->valueint;
+	} else {
+		configs->l = DEFAULT_L;
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"n");
 	if (cJSON_IsNumber(name)) {
 		configs->n = name->valueint;
+	} else {
+		configs->n = DEFAULT_N;
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"gamma"); 	
 	if (cJSON_IsNumber(name)) {
 		configs->gamma = name->valueint;
+	} else {
+		configs->gamma = DEFAULT_GAMMA;
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"tau"); 	
 	if (cJSON_IsNumber(name)) {
 		configs->tau = name->valueint;
+	} else {
+		configs->tau = DEFAULT_TAU;
 	}
 
     name = cJSON_GetObjectItemCaseSensitive(json,"ttl"); 	
 	if (cJSON_IsNumber(name)) {
 		configs->ttl = name->valueint;
+	} else {
+		configs->ttl = DEFAULT_TTL;
 	}
 	  
 	// delete the JSON object 
