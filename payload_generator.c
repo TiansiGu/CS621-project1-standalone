@@ -49,5 +49,5 @@ unsigned char * generate_payload(int size, int entropy_high) {
 
 void fill_packet_id(unsigned char *data_ptr, uint16_t packet_id) {
 	uint16_t network_packet_id = htons(packet_id);
-	memcpy(data_ptr, &packet_id, sizeof(network_packet_id));
+	memcpy(data_ptr, &network_packet_id, sizeof(network_packet_id));
 }
