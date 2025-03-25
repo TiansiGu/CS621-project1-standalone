@@ -37,7 +37,12 @@ struct tcp_pseudo_header {
 	struct tcphdr tcp;
 };
 
-/* this function generates header checksums */
+/** This function calculates the checksum for a given buffer.
+ * 
+ * @param buf    The given buffer.
+ * @param nwords The number of 16-bit words in the given buffer.
+ * @return       The calculated checksum of the buffer.
+ */
 unsigned short csum(unsigned short *buf, int nwords) {
   unsigned long sum;
   for (sum = 0; nwords > 0; nwords--)
@@ -47,6 +52,18 @@ unsigned short csum(unsigned short *buf, int nwords) {
   return ~sum;
 }
 
+/**
+ * This function fills the IP header fields based on the provided configs, protocol, and data size.
+ * It sets the appropriate IP version, header length, identification, TTL, etc., and computes
+ * the IP header checksum.
+ * 
+ * @param iphr The IP header structure to be populated.
+ * @param configs The configuration structure that contains the client and server IP addr.
+ * @param protocol The IP protocol to be used (TCP = 6, UDP = 17).
+ * @param data_size The size of the data payload to be sent.
+ * 
+ * @return 0 on success, -1 if an error occurred.
+ */
 int populate_ip_header(struct ip *iphr, struct configurations *configs, int protocol, int data_size) {
 	iphr->ip_v = 4; //ipv4
 	iphr->ip_hl = 5; //set ip header size to be the minimum: 5*4 = 20 bytes
@@ -69,6 +86,15 @@ int populate_ip_header(struct ip *iphr, struct configurations *configs, int prot
 	return 0;
 }
 
+/**
+ * This function fills the TCP header fields such as source and destination ports, 
+ * sequence number, acknowledgment number, flags, window size, and checksum.
+ * 
+ * @param tcphr The TCP header structure to be populated.
+ * @param iphr The corresponding filled IP header structure for the tcp header.
+ * @param src_port The source port for the TCP connection.
+ * @param dst_port The destination port for the TCP connection.
+ */
 void populate_tcp_header(struct tcphdr *tcphr, struct ip *iphr, uint16_t src_port, uint16_t dst_port) {
 	tcphr->th_sport = htons(src_port);
   	tcphr->th_dport = htons(dst_port);
@@ -95,6 +121,18 @@ void populate_tcp_header(struct tcphdr *tcphr, struct ip *iphr, uint16_t src_por
     tcphr->th_sum = csum((unsigned short*)&psh, sizeof(struct tcp_pseudo_header) >> 1);
 }
 
+/** 
+ * This function populates the IP and TCP headers for a SYN packet, and sends the packet to the server 
+ * we want to detect through sock_syn. The function includes all necessary headers and sets the `IP_HDRINCL` 
+ * socket option to tell the OS the application will build the IP header.
+ * 
+ * @param sock_syn The raw socket descriptor used for sending the SYN packet.
+ * @param configs The configuration structure containing IP addresses and port information.
+ * @param server_port The destination server port for the SYN packet.
+ * 
+ * @return 0 on success, or -1 if an error occurred (e.g., failure in creating headers, 
+ *         sending the packet, or setting socket options).
+ */
 int send_SYN(int sock_syn, struct configurations *configs, uint16_t server_port) {
 	struct ip iphr;
 	int res = populate_ip_header(&iphr, configs, IPPROTO_TCP, sizeof(struct tcphdr)); //no payload, data_size is only tcp header size
@@ -117,7 +155,7 @@ int send_SYN(int sock_syn, struct configurations *configs, uint16_t server_port)
 	int one = 1;
     res = setsockopt(sock_syn, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one));
     if (res == -1) {
-		perror("Warning: Cannot set HDRINCL!");
+		perror("Failed: Cannot set HDRINCL!");
 		return -1;
 	}
 
@@ -138,6 +176,13 @@ int send_SYN(int sock_syn, struct configurations *configs, uint16_t server_port)
 	return 0;
 }
 
+/**
+ * This function binds the provided socket descriptor to the specified port.
+ * 
+ * @param fd The socket descriptor that will be bound to the specified port.
+ * @param port The port number to bind the socket to.
+ * @param addr The sockaddr_in structure that will hold the bound address and port.
+ */
 void bind_port(int fd, int port, struct sockaddr_in *addr) {
 	addr->sin_family = AF_INET;
     addr->sin_addr.s_addr = INADDR_ANY;
@@ -150,6 +195,13 @@ void bind_port(int fd, int port, struct sockaddr_in *addr) {
 	}
 }
 
+/**
+ * This function sets the TTL (time to live) for the socket, which determines how many 
+ * hops the packet can make before being discarded. 
+ * 
+ * @param fd The socket descriptor on which TTL will be set.
+ * @param ttl The TTL value to set for the socket (in the range 0-255).
+ */
 void set_ttl(int fd, int ttl) {
 	int result = setsockopt(fd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 	if (result == -1) {
@@ -159,6 +211,18 @@ void set_ttl(int fd, int ttl) {
 	}
 }
 
+/**
+ * This function generates a payload for UDP packets and sends a series of packets 
+ * (packet train) to the specified server using the given socket descriptor. The 
+ * packet IDs are filled, and each packet is sent in sequence.
+ * 
+ * @param sock_udp The UDP socket descriptor used to send the packets.
+ * @param configs The configuration structure containing packet details such as size and number of packets.
+ * @param server_sin The sockaddr_in structure containing the destination server address and port.
+ * @param high A flag indicating whether to use high-entropy random data (if set to 1), or low-entropy data (if set to 0).
+ * 
+ * @return 0 on success, or -1 if an error occurred while sending the packets.
+ */
 int send_UDP_train(int sock_udp, struct configurations *configs, 
 	struct sockaddr_in *server_sin, int high) {
 	// Generate udp payload
@@ -179,6 +243,18 @@ int send_UDP_train(int sock_udp, struct configurations *configs,
 	return 0;
 }
 
+/**
+ * This function performs the following detect tasks:
+ * 1. Creates raw TCP socket and normal UDP socket for sending SYN packets and UDP packet trains.
+ * 2. Configures the client and server addresses for sending UDP packets.
+ * 3. Sends SYN packets at the start (head SYN) and end (tail SYN) of a UDP packet train.
+ * 4. Sends UDP packet trains with either low-entropy or high-entropy payloads based on configuration.
+ * 5. Waits for an inter-measurement period before sending another round of SYN packets and UDP packet train.
+ * 
+ * @param arg A pointer to the configuration structure containing settings for the detection process.
+ * 
+ * @return void. The function terminates the program if an error occurs during socket creation or packet sending.
+ */
 void send_detect_packets(void *arg) {
 	struct configurations *configs = (struct configurations *) arg;
 
@@ -261,6 +337,14 @@ void send_detect_packets(void *arg) {
 	printf("Sender thread done \n");
 }
 
+/** 
+ * This function is the start_routine of sender thread. It waits until the receiver signals that it is ready to receive packets. 
+ * Once the receiver is ready, it begins the process of sending detection packets using the `send_detect_packets` function.
+ * 
+ * @param arg A pointer to the configuration structure containing settings for the detection process.
+ * 
+ * @return NULL This function does not return a value. It is designed to be run by a thread.
+ */
 void *start_send(void *arg) {
 	pthread_mutex_lock(&lock);
 	while (!is_server_ready) {
@@ -273,6 +357,12 @@ void *start_send(void *arg) {
 	return NULL;
 }
 
+/** 
+ * This function modify the socket descriptor's flags and set it to non-blocking mode.
+ * 
+ * @param fd The socket descriptor to modify.
+ * @return void. The function exits the program if there is an error when getting or setting the flags.
+ */
 void set_nonblocking(int fd) {
 	int flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) {
@@ -287,10 +377,19 @@ void set_nonblocking(int fd) {
     }
 }
 
-
-/** Parse packet received from raw socket and identify if this packet is a RST packe.
-If it is not a related RST packet, return -1. If it is a RST packet sent from head SYN 
-port, return 0; If it is a RST packet sent from tail SYN port, return 1. */
+/**
+ * This function checks if the received packet is an RST packet from the expected source, 
+ * and if so, determines whether it is from the head SYN or tail SYN port.
+ * If the packet is not an RST packet or is not from the expected source, the function returns -1.
+ * 
+ * @param buf The buffer containing the received raw packet.
+ * @param configs The configuration structure containing expected IP addr and port info.
+ * 
+ * @return 
+ * -1 if the packet is not a related RST packet.
+ * 0 if it is an RST packet from the head SYN port.
+ * 1 if it is an RST packet from the tail SYN port.
+ */
 int parse_recv_packet(unsigned char *buf, struct configurations *configs) {
 	struct ip *iph = (struct ip *) buf;
 	if (iph->ip_v != 4) {
@@ -320,6 +419,13 @@ int parse_recv_packet(unsigned char *buf, struct configurations *configs) {
 	}
 }
 
+/** 
+ * This function checks whether the `t_first_SYN_sent` timestamp is non-zero. 
+ * If the timestamp is non-zero, it indicates that the first SYN packet has been sent.
+ * The function uses a mutex to ensure thread safety when accessing the shared `t_first_SYN_sent`.
+ * 
+ * @return 1 if the first SYN packet has been sent, 0 if it has not.
+ */
 int is_first_SYN_sent() {
 	pthread_mutex_lock(&lock); //lock before read
 	int res = !(t_first_SYN_sent.tv_sec == 0 && t_first_SYN_sent.tv_nsec == 0);
@@ -327,6 +433,13 @@ int is_first_SYN_sent() {
 	return res;
 }
 
+/** 
+ * This function sets the `is_server_ready` flag to `1`, indicating that the receiver is ready to start
+ * receiving packets. It then signals the sender thread (using the condition variable) to wake up sender
+ * and begin sending the detection packets.
+ * 
+ * @return void. This function does not return any value.
+ */
 void wakeup_sender() {
 	pthread_mutex_lock(&lock);
 	is_server_ready = 1; 
@@ -334,6 +447,18 @@ void wakeup_sender() {
 	pthread_mutex_unlock(&lock);
 }
 
+/** 
+ * This function is the start_routine of the receiver thread. It performs the following tasks:
+ * 1. Creates a raw socket to listen for incoming RST packets.
+ * 2. Sets the socket to non-blocking mode.
+ * 3. Waits for RST packets from the server, filters the relevant ones, and measures the time difference
+ *    between receiving the first and second SYN RST packets.
+ * 4. Compares the time difference to detect whether compression is present based on the configured threshold (`tau`).
+ * 
+ * @param arg A pointer to the configuration structure containing the settings for the detection process.
+ * 
+ * @return NULL. This function does not return any value and is intended to run in a separate thread.
+ */
 void *start_recv(void *arg) {
 	//sleep(5); //to be deleted
 	struct configurations *configs = (struct configurations *) arg;
@@ -413,6 +538,12 @@ void *start_recv(void *arg) {
 	return NULL;
 }
 
+/** 
+ * This function creates two threads: one for sending detection packets and the other for receiving
+ * RST packets. It waits for both threads to complete before complete the process.
+ * 
+ * @param configs A pointer to the configuration structure containing the necessary settings for the detection process.
+ */
 void probe(struct configurations *configs) {
 	pthread_t sender_thr, listener_thr;
 	// create sender thread
