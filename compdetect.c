@@ -10,7 +10,9 @@
 
 /** 
  * This function reads a JSON configuration file, parses its contents, extracts 
- * configuration values, and stores them in the provided `configs` structure.
+ * configuration values, and stores them in the provided `configs` structure. If 
+ * a specific field doesn't exist in the json file, set the field of `configs`
+ * to default value (defined in default.h).
  * 
  * @param file_name The name of the configuration file to be parsed.
  * @param buffer A buffer where the contents of the configuration file will be stored temporarily.
@@ -45,11 +47,17 @@ void parse_configs(char* file_name, char *buffer, struct configurations *configs
 	cJSON *name = cJSON_GetObjectItemCaseSensitive(json, "server_ip_addr"); 
 	if (cJSON_IsString(name) && (name->valuestring != NULL)) { 
 	    strcpy(configs->server_ip_addr, name->valuestring);
+	} else {
+		printf("server_ip_addr is not set correctly. \n");
+		exit(EXIT_FAILURE);
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json,"client_ip_addr"); 
 	if (cJSON_IsString(name)) { 
 		strcpy(configs->client_ip_addr, name->valuestring);
+	} else {
+		printf("client_ip_addr is not set correctly. \n");
+		exit(EXIT_FAILURE);
 	}
 
 	name = cJSON_GetObjectItemCaseSensitive(json, "client_port_SYN");

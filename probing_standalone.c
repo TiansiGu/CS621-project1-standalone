@@ -211,7 +211,10 @@ void set_ttl(int fd, int ttl) {
 	}
 }
 
-/** Set don't fragment bit for sock fd */
+/** 
+ * Sets the "Don't Fragment" (DF) flag on the socket to prevent packet fragmentation.
+ * @param fd The file descriptor of the socket to configure.
+ */
 void set_df(int fd) {
 	int val = IP_PMTUDISC_DO;
 	if (setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val)) == -1) {
